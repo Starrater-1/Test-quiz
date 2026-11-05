@@ -1,0 +1,537 @@
+!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>N+C 角色匹配测试</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #0e0e12;
+    color: #e8e8ee;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  .container { max-width: 720px; width: 100%; }
+  h1 { font-size: 1.6rem; margin-bottom: 8px; font-weight: 600; }
+  h2 { font-size: 1.2rem; margin: 24px 0 12px; color: #c8c8d8; }
+  .sub { color: #8888a0; font-size: 0.9rem; margin-bottom: 24px; line-height: 1.6; }
+  .card {
+    background: #18181f;
+    border: 1px solid #2a2a36;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .q-num { color: #7a7a9a; font-size: 0.8rem; margin-bottom: 6px; }
+  .q-text { font-size: 1.05rem; margin-bottom: 16px; line-height: 1.5; }
+  .options { display: flex; flex-direction: column; gap: 8px; }
+  .opt {
+    background: #20202a;
+    border: 1px solid #32323e;
+    border-radius: 8px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: 0.15s;
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+  .opt:hover { background: #2a2a38; border-color: #4a4a60; }
+  .opt.selected { background: #2e2e48; border-color: #6a6a9a; }
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    background: #3a3a58;
+    border: none;
+    border-radius: 8px;
+    color: #e8e8ee;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-top: 16px;
+    transition: 0.15s;
+  }
+  .btn:hover { background: #4a4a6a; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .progress {
+    height: 4px;
+    background: #2a2a36;
+    border-radius: 2px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: #6a6a9a;
+    width: 0%;
+    transition: 0.3s;
+  }
+  .hidden { display: none; }
+  .chart-wrap {
+    position: relative;
+    height: 340px;
+    margin: 16px 0 24px;
+  }
+  .match-item {
+    background: #20202a;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .match-name { font-weight: 600; font-size: 1.05rem; }
+  .match-work { color: #8888a0; font-size: 0.85rem; }
+  .match-score {
+    background: #3a3a58;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    color: #b8b8d8;
+  }
+  .traits { color: #a0a0b8; font-size: 0.85rem; line-height: 1.6; margin-top: 8px; }
+  .trait-tag {
+    display: inline-block;
+    background: #2a2a3e;
+    padding: 2px 10px;
+    border-radius: 12px;
+    margin: 2px 4px 2px 0;
+    font-size: 0.8rem;
+  }
+  .note { color: #666680; font-size: 0.78rem; margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 欢迎页 -->
+  <div id="page-welcome">
+    <h1>N+C 角色匹配测试</h1>
+    <p class="sub">
+      20 道题，测量 5 个性格维度，从 N+C 全系列主角与可攻略角色中匹配最相似的 3 位。<br>
+      题目不涉及原作剧情，只问日常行为倾向。
+    </p>
+    <button class="btn" onclick="startQuiz()">开始测试</button>
+    <p class="note">
+      角色池包括：咎狗之血、Lamento、sweet pool、DRAMAtical Murder、Slow Damage 中可确认的主角与可攻略角色。
+      Slow Damage 部分路线角色因资料不足暂未纳入。
+    </p>
+  </div>
+
+  <!-- 答题页 -->
+  <div id="page-quiz" class="hidden">
+    <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+    <div id="questionArea"></div>
+    <button class="btn" id="nextBtn" disabled onclick="nextQuestion()">下一题</button>
+  </div>
+
+  <!-- 结果页 -->
+  <div id="page-result" class="hidden">
+    <h1>你的结果</h1>
+    <p class="sub" id="resultSub"></p>
+
+    <h2>性格维度构成</h2>
+    <div class="chart-wrap">
+      <canvas id="radarChart"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="pieChart"></canvas>
+    </div>
+
+    <h2>与你最相似的角色</h2>
+    <div id="matchList"></div>
+
+    <button class="btn" onclick="location.reload()">重新测试</button>
+  </div>
+
+</div>
+
+<script>
+// ==================== 角色数据 ====================
+// 维度顺序: [支配性, 表达性, 稳定性, 亲和性, 隐秘性]  0-10
+const CHARACTERS = [
+  { name: 'Akira', work: '咎狗之血', v: [4,5,6,5,5] },
+  { name: 'Shiki', work: '咎狗之血', v: [9,2,8,2,8] },
+  { name: 'Keisuke', work: '咎狗之血', v: [3,6,3,6,4] },
+  { name: 'Rin', work: '咎狗之血', v: [6,7,6,7,3] },
+  { name: '源泉', work: '咎狗之血', v: [6,4,8,6,6] },
+  { name: 'Nano', work: '咎狗之血', v: [7,2,9,3,9] },
+  { name: 'Konoe', work: 'Lamento', v: [4,5,5,6,4] },
+  { name: 'Rai', work: 'Lamento', v: [8,3,7,3,7] },
+  { name: 'Asato', work: 'Lamento', v: [4,8,4,8,2] },
+  { name: 'Bardo', work: 'Lamento', v: [6,6,7,5,5] },
+  { name: '弗劳德', work: 'Lamento', v: [7,7,4,2,10] },
+  { name: '崎山蓉司', work: 'sweet pool', v: [3,3,4,4,7] },
+  { name: '城沼哲雄', work: 'sweet pool', v: [8,1,8,4,8] },
+  { name: '三田睦', work: 'sweet pool', v: [5,9,5,7,3] },
+  { name: '翁长善弥', work: 'sweet pool', v: [3,7,2,2,9] },
+  { name: '濑良垣苍叶', work: 'DRAMAtical Murder', v: [4,6,6,7,3] },
+  { name: '红雀', work: 'DRAMAtical Murder', v: [6,7,7,9,3] },
+  { name: 'Noiz', work: 'DRAMAtical Murder', v: [5,3,5,3,8] },
+  { name: 'Clear', work: 'DRAMAtical Murder', v: [4,8,4,8,5] },
+  { name: 'Mink', work: 'DRAMAtical Murder', v: [9,2,7,2,8] },
+  { name: '莲', work: 'DRAMAtical Murder', v: [6,3,7,6,7] },
+  { name: 'Towa', work: 'Slow Damage', v: [3,4,4,3,8] },
+  { name: 'Rei', work: 'Slow Damage', v: [6,4,6,5,7] },
+  { name: 'Taku', work: 'Slow Damage', v: [5,5,7,8,4] },
+];
+
+// ==================== 题目 ====================
+// 每题 5 选项，每选项给 [支配, 表达, 稳定, 亲和, 隐秘] 增量
+const QUESTIONS = [
+  // 支配性 Q1-Q4
+  { q: '小组讨论陷入僵局时，你通常会：', o: [
+    { t: '直接拍板定方向，哪怕有人不满', s: [2,0,0,-1,1] },
+    { t: '提出一个方案，但语气留有余地', s: [1,1,0,1,0] },
+    { t: '等别人先表态，再补充意见', s: [-1,0,1,1,0] },
+    { t: '私下找关键人物沟通，不公开推动', s: [1,-1,1,0,2] },
+    { t: '不参与，反正结果都差不多', s: [-2,0,0,0,1] },
+  ]},
+  { q: '有人当面质疑你的决定，你的第一反应是：', o: [
+    { t: '当场反驳，把逻辑压回去', s: [2,2,-1,-1,0] },
+    { t: '冷静听完，然后逐条回应', s: [2,1,2,0,0] },
+    { t: '先接受，事后用自己的方式继续做', s: [1,-1,1,-1,2] },
+    { t: '问对方具体哪里不服，试图理解', s: [0,1,1,2,0] },
+    { t: '沉默，不解释也不改', s: [1,-2,1,-1,2] },
+  ]},
+  { q: '你更习惯用什么方式让别人配合你？', o: [
+    { t: '明确指令，不解释太多', s: [2,-1,1,-1,1] },
+    { t: '讲清理由，让对方自己判断', s: [1,1,1,1,0] },
+    { t: '先拉近关系，再提要求', s: [0,2,0,2,0] },
+    { t: '制造一种“你最好配合”的暗示', s: [2,-1,1,-2,2] },
+    { t: '很少要求别人配合', s: [-2,0,0,1,0] },
+  ]},
+  { q: '在陌生场合，你倾向于：', o: [
+    { t: '观察谁说了算，然后决定自己的位置', s: [1,-1,1,0,1] },
+    { t: '主动开口，把话题引到自己熟悉的方向', s: [2,2,0,0,0] },
+    { t: '等别人来搭话', s: [-1,0,0,1,0] },
+    { t: '找个角落待着，不引人注意', s: [-1,-1,0,0,2] },
+    { t: '看心情，有时主导有时隐身', s: [0,0,-1,0,1] },
+  ]},
+
+  // 表达性 Q5-Q8
+  { q: '你开心的时候最可能：', o: [
+    { t: '直接笑出来，让周围人都知道', s: [0,2,0,1,0] },
+    { t: '用行动表达，比如请人吃饭、帮忙做事', s: [1,1,0,2,0] },
+    { t: '自己知道就好，不太表现出来', s: [0,-2,1,0,1] },
+    { t: '找特定的人分享，不对外广播', s: [0,1,0,1,1] },
+    { t: '看起来和平常没什么两样', s: [0,-1,1,0,2] },
+  ]},
+  { q: '你难过或烦躁时，别人能看出来吗？', o: [
+    { t: '很明显，藏不住', s: [0,2,-2,0,0] },
+    { t: '会露出一点，但不希望被追问', s: [0,1,-1,0,1] },
+    { t: '能藏就藏，实在不行就消失一阵', s: [0,-1,0,0,2] },
+    { t: '会用玩笑或讽刺带过去', s: [0,1,0,-1,1] },
+    { t: '看对象，有人面前不藏', s: [0,1,0,1,0] },
+  ]},
+  { q: '对亲近的人说“喜欢”或“在意”，对你来说：', o: [
+    { t: '不难，该说就说', s: [0,2,0,1,0] },
+    { t: '更习惯用行动代替语言', s: [1,-1,1,1,1] },
+    { t: '很难开口，觉得说出来就变味了', s: [0,-2,0,1,2] },
+    { t: '只在特定时刻、气氛到了才会说', s: [0,1,0,1,1] },
+    { t: '几乎不会说，但对方应该能感觉到', s: [0,-2,1,0,2] },
+  ]},
+  { q: '你的肢体语言通常：', o: [
+    { t: '丰富，说话时会自然带手势', s: [0,2,0,1,0] },
+    { t: '放松，不刻意控制', s: [0,1,1,0,0] },
+    { t: '偏收敛，尽量不占空间', s: [-1,-1,1,0,1] },
+    { t: '有攻击性或防御性，看场合', s: [1,0,-1,-1,1] },
+    { t: '很稳，几乎不动', s: [1,-2,2,0,1] },
+  ]},
+
+  // 稳定性 Q9-Q12
+  { q: '计划被打乱时，你的情绪波动：', o: [
+    { t: '很大，需要时间平复', s: [0,1,-2,0,0] },
+    { t: '有一点，但很快调整', s: [0,0,1,1,0] },
+    { t: '基本没有，重新安排就行', s: [1,0,2,0,0] },
+    { t: '表面没事，心里会记很久', s: [0,-1,-1,0,2] },
+    { t: '看是什么计划，重要的才会', s: [0,0,0,0,1] },
+  ]},
+  { q: '你做重大决定时更依赖：', o: [
+    { t: '当下的直觉和冲动', s: [1,1,-2,0,0] },
+    { t: '理性分析，列出利弊', s: [1,0,2,0,0] },
+    { t: '问信任的人的意见', s: [0,1,0,2,0] },
+    { t: '拖到不能再拖，然后凭感觉选', s: [-1,0,-2,0,1] },
+    { t: '尽量不做决定，让别人先动', s: [-2,0,0,0,1] },
+  ]},
+  { q: '别人对你的评价中，你最常听到的是：', o: [
+    { t: '“你太淡定了”', s: [1,-1,2,0,1] },
+    { t: '“你情绪起伏好大”', s: [0,2,-2,0,0] },
+    { t: '“你很好说话”', s: [-1,0,1,2,0] },
+    { t: '“你让人看不透”', s: [1,-1,0,-1,2] },
+    { t: '“你太较真了”', s: [1,1,-1,-1,0] },
+  ]},
+  { q: '压力大的时候你会：', o: [
+    { t: '找人说，反复说', s: [0,2,-1,1,0] },
+    { t: '一个人待着，做点需要专注的事', s: [0,-1,1,0,1] },
+    { t: '硬扛，扛到事情过去', s: [1,-1,2,0,0] },
+    { t: '做出一些平时不会做的冲动行为', s: [1,1,-2,0,0] },
+    { t: '切断联系，谁都不想理', s: [0,-2,0,-1,2] },
+  ]},
+
+  // 亲和性 Q13-Q16
+  { q: '一个不太熟的人向你倾诉烦恼，你会：', o: [
+    { t: '认真听，给出回应', s: [0,1,0,2,0] },
+    { t: '听，但心里保持距离', s: [0,0,0,0,1] },
+    { t: '想办法把话题转到轻松的方向', s: [0,1,0,1,0] },
+    { t: '不太耐烦，但不会表现出来', s: [0,-1,0,-2,2] },
+    { t: '找借口离开', s: [-1,-1,0,-2,0] },
+  ]},
+  { q: '你对“团队合作”的真实态度是：', o: [
+    { t: '喜欢，人多效率高、氛围好', s: [0,1,0,2,0] },
+    { t: '看队友是谁，好的话没问题', s: [0,0,1,1,0] },
+    { t: '更愿意自己负责一摊，少扯皮', s: [1,-1,1,-1,1] },
+    { t: '能避免就避免', s: [0,-1,0,-2,1] },
+    { t: '无所谓，怎么都行', s: [-1,0,1,0,0] },
+  ]},
+  { q: '有人在你面前哭了，你的第一反应：', o: [
+    { t: '递纸巾，问怎么了', s: [0,1,0,2,0] },
+    { t: '有点手足无措，但会留在原地', s: [0,1,-1,1,0] },
+    { t: '心里想“别对着我哭”，但嘴上不说', s: [0,-1,0,-1,2] },
+    { t: '冷静地帮对方处理问题', s: [1,0,2,0,1] },
+    { t: '等对方自己停下来', s: [0,-1,1,-1,0] },
+  ]},
+  { q: '你更容易对哪种人产生好感？', o: [
+    { t: '温暖、直接、不藏心思的人', s: [0,1,0,2,0] },
+    { t: '有原则、靠得住的人', s: [1,0,1,1,0] },
+    { t: '有距离感、需要慢慢了解的人', s: [0,-1,0,-1,2] },
+    { t: '能让你产生保护欲的人', s: [1,0,0,1,0] },
+    { t: '不太容易对人产生好感', s: [0,-1,0,-2,1] },
+  ]},
+
+  // 隐秘性 Q17-Q20
+  { q: '你向别人介绍自己时，通常会：', o: [
+    { t: '说一些表面的、安全的信息', s: [0,1,0,1,0] },
+    { t: '看对方是什么人再决定说多少', s: [0,0,0,0,1] },
+    { t: '尽量少说，让对方自己去猜', s: [0,-1,0,-1,2] },
+    { t: '主动多说，但关键部分模糊处理', s: [1,1,0,0,1] },
+    { t: '不太需要向别人介绍自己', s: [1,-1,1,-1,2] },
+  ]},
+  { q: '你的社交账号/个人空间更接近：', o: [
+    { t: '经常发，内容随意', s: [0,2,0,1,0] },
+    { t: '偶尔发，只发确定的内容', s: [0,0,1,0,1] },
+    { t: '很少发，但会看', s: [0,-1,1,0,1] },
+    { t: '几乎不发，也不怎么看', s: [0,-2,1,-1,2] },
+    { t: '有多个账号，不同人看到不同面', s: [1,1,0,0,2] },
+  ]},
+  { q: '有人试图深入了解你时，你的感觉是：', o: [
+    { t: '开心，希望对方多了解自己', s: [0,1,0,2,0] },
+    { t: '可以接受，但需要时间', s: [0,0,1,1,1] },
+    { t: '警惕，会想对方有什么目的', s: [1,-1,0,-1,2] },
+    { t: '不适，想拉开距离', s: [0,-2,0,-1,2] },
+    { t: '看是谁，特定的人可以', s: [0,0,0,1,1] },
+  ]},
+  { q: '你心里有一个“不会让任何人进来”的区域吗？', o: [
+    { t: '没有，我觉得没什么不能说的', s: [0,2,0,2,0] },
+    { t: '有，但很小', s: [0,0,1,1,1] },
+    { t: '有，而且不小', s: [0,-1,0,0,2] },
+    { t: '有，很大，几乎全部', s: [0,-2,0,-1,3] },
+    { t: '不确定，没想过这个问题', s: [0,0,0,0,0] },
+  ]},
+];
+
+// ==================== 状态 ====================
+let currentQ = 0;
+let answers = []; // 每题选中的选项 index
+let scores = [0,0,0,0,0]; // 累积维度分
+
+// ==================== 页面切换 ====================
+function startQuiz() {
+  document.getElementById('page-welcome').classList.add('hidden');
+  document.getElementById('page-quiz').classList.remove('hidden');
+  currentQ = 0;
+  answers = [];
+  scores = [0,0,0,0,0];
+  renderQuestion();
+}
+
+function renderQuestion() {
+  const q = QUESTIONS[currentQ];
+  const area = document.getElementById('questionArea');
+  const progress = ((currentQ) / QUESTIONS.length) * 100;
+  document.getElementById('progressBar').style.width = progress + '%';
+
+  let html = `
+    <div class="card">
+      <div class="q-num">第 ${currentQ + 1} / ${QUESTIONS.length} 题</div>
+      <div class="q-text">${q.q}</div>
+      <div class="options" id="optionsList">
+  `;
+  q.o.forEach((opt, i) => {
+    const sel = answers[currentQ] === i ? ' selected' : '';
+    html += `<div class="opt${sel}" data-index="${i}" onclick="selectOption(${i})">${opt.t}</div>`;
+  });
+  html += `</div></div>`;
+  area.innerHTML = html;
+
+  const nextBtn = document.getElementById('nextBtn');
+  if (answers[currentQ] !== undefined) {
+    nextBtn.disabled = false;
+    nextBtn.textContent = currentQ === QUESTIONS.length - 1 ? '查看结果' : '下一题';
+  } else {
+    nextBtn.disabled = true;
+    nextBtn.textContent = currentQ === QUESTIONS.length - 1 ? '查看结果' : '下一题';
+  }
+}
+
+function selectOption(idx) {
+  answers[currentQ] = idx;
+  renderQuestion();
+  document.getElementById('nextBtn').disabled = false;
+}
+
+function nextQuestion() {
+  if (answers[currentQ] === undefined) return;
+  if (currentQ < QUESTIONS.length - 1) {
+    currentQ++;
+    renderQuestion();
+  } else {
+    calcResult();
+  }
+}
+
+// ==================== 计算 ====================
+function calcResult() {
+  // 累加
+  scores = [0,0,0,0,0];
+  answers.forEach((ansIdx, qi) => {
+    const delta = QUESTIONS[qi].o[ansIdx].s;
+    for (let d = 0; d < 5; d++) scores[d] += delta[d];
+  });
+
+  // 归一化到 0-10
+  // 每维最大值估算：4题 × 每题最大2（部分3），粗估上界 10，下界 -8
+  // 用 min-max 映射到 0-10
+  const normalized = scores.map(s => {
+    const min = -8, max = 10;
+    let v = ((s - min) / (max - min)) * 10;
+    return Math.max(0, Math.min(10, Math.round(v * 10) / 10));
+  });
+
+  showResult(normalized);
+}
+
+function showResult(userV) {
+  document.getElementById('page-quiz').classList.add('hidden');
+  document.getElementById('page-result').classList.remove('hidden');
+
+  // 维度描述
+  const dimNames = ['支配性', '表达性', '稳定性', '亲和性', '隐秘性'];
+  const desc = userV.map((v, i) => {
+    if (v >= 7.5) return `高${dimNames[i]}`;
+    if (v >= 5) return `中${dimNames[i]}`;
+    if (v >= 3) return `偏低${dimNames[i]}`;
+    return `低${dimNames[i]}`;
+  });
+  document.getElementById('resultSub').textContent = `你的性格构成：${desc.join(' / ')}`;
+
+  // 雷达图
+  const radarCtx = document.getElementById('radarChart').getContext('2d');
+  new Chart(radarCtx, {
+    type: 'radar',
+    data: {
+      labels: dimNames,
+      datasets: [{
+        label: '你的数值',
+        data: userV,
+        backgroundColor: 'rgba(120, 120, 200, 0.25)',
+        borderColor: '#8888cc',
+        borderWidth: 2,
+        pointBackgroundColor: '#aaaadd',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          min: 0, max: 10,
+          ticks: { stepSize: 2, color: '#8888a0', backdropColor: 'transparent' },
+          grid: { color: '#2a2a3a' },
+          angleLines: { color: '#2a2a3a' },
+          pointLabels: { color: '#c8c8d8', font: { size: 12 } }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  // 饼图：五个维度占比
+  const total = userV.reduce((a,b) => a + b, 0) || 1;
+  const pieCtx = document.getElementById('pieChart').getContext('2d');
+  new Chart(pieCtx, {
+    type: 'doughnut',
+    data: {
+      labels: dimNames,
+      datasets: [{
+        data: userV.map(v => Math.max(v, 0.5)),
+        backgroundColor: [
+          'rgba(200, 100, 100, 0.7)',
+          'rgba(100, 180, 200, 0.7)',
+          'rgba(100, 200, 140, 0.7)',
+          'rgba(220, 200, 100, 0.7)',
+          'rgba(160, 120, 200, 0.7)',
+        ],
+        borderColor: '#18181f',
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#c8c8d8', padding: 16 } },
+      }
+    }
+  });
+
+  // 匹配
+  const results = CHARACTERS.map(c => {
+    // 欧氏距离，越小越相似
+    let sumSq = 0;
+    for (let i = 0; i < 5; i++) sumSq += Math.pow(userV[i] - c.v[i], 2);
+    const dist = Math.sqrt(sumSq);
+    // 相似度百分比：最大距离约 sqrt(5*100)=22.36，映射到 0-100
+    const similarity = Math.max(0, Math.round((1 - dist / 22.36) * 100));
+    return { ...c, dist, similarity };
+  }).sort((a,b) => a.dist - b.dist).slice(0, 5);
+
+  const listEl = document.getElementById('matchList');
+  listEl.innerHTML = results.map((r, idx) => {
+    const rankLabel = idx === 0 ? '最相似' : `第 ${idx+1} 位`;
+    return `
+      <div class="match-item">
+        <div>
+          <div class="match-name">${r.name}</div>
+          <div class="match-work">${r.work}</div>
+        </div>
+        <div class="match-score">${r.similarity}% 匹配</div>
+      </div>
+    `;
+  }).join('');
+
+  // 维度标签
+  const traitHtml = userV.map((v, i) => {
+    let level = v >= 7.5 ? '高' : v >= 5 ? '中' : v >= 3 ? '偏低' : '低';
+    return `<span class="trait-tag">${level}${dimNames[i]}</span>`;
+  }).join('');
+
+  listEl.insertAdjacentHTML('afterend', `
+    <div class="traits" style="margin-top:16px;">
+      <strong>你的维度标签：</strong><br>${traitHtml}
+    </div>
+    <p class="note">
+      匹配算法基于 5 维欧氏距离，角色数值为人工映射，非官方设定。Slow Damage 的斑目、藤枝因公开性格资料不足未纳入角色池。
+    </p>
+  `);
+}
+</script>
+</body>
+</html>
